@@ -1,0 +1,41 @@
+{
+  "name": "backend-tourai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prisma:generate": "prisma generate",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "auth:generate": "npx auth generate --config src/auth.ts",
+    "test:postman:auth": "postman collection run postman/tourai-auth.collection.json -e postman/local.postman_environment.json -i \"Automated Session Flow\" -i \"Automated Sign Up Verify Reset Flow\"",
+    "test:postman:mvp": "postman collection run postman/tourai-auth.collection.json -e postman/local.postman_environment.json",
+    "test:postman:guides": "postman collection run postman/tourai-auth.collection.json -e postman/local.postman_environment.json -i \"Guides and Audio\""
+  },
+  "dependencies": {
+    "@better-auth/prisma-adapter": "^1.5.6",
+    "@fastify/cors": "^11.0.0",
+    "@fastify/type-provider-typebox": "^5.1.0",
+    "@prisma/client": "^6.6.0",
+    "@sinclair/typebox": "^0.34.31",
+    "@supabase/supabase-js": "^2.101.1",
+    "better-auth": "^1.5.6",
+    "dotenv": "^17.4.0",
+    "env-schema": "^5.2.0",
+    "fastify": "^5.2.1",
+    "fastify-plugin": "^5.0.1",
+    "jose": "^6.2.2",
+    "postman-cli": "^1.33.5",
+    "resend": "^6.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.14",
+    "prisma": "^6.6.0",
+    "supabase": "^2.84.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}

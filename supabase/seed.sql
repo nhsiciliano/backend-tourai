@@ -1,0 +1,2 @@
+-- Seed data is intentionally empty for now.
+-- Tourai will load curated CABA places through application-specific ingestion later.

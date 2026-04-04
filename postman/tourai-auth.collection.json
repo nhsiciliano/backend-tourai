@@ -1,0 +1,777 @@
+{
+  "info": {
+    "name": "Tourai Backend",
+    "description": "Auth, places and location smoke tests for the Tourai backend.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Automated Session Flow",
+      "item": [
+        {
+          "name": "Sign In Existing User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{existingUserEmail}}\",\n  \"password\": \"{{existingUserPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/sign-in/email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "sign-in",
+                "email"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('sign in returns 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test('sign in returns authenticated user', function () {",
+                  "  pm.expect(json.user.email).to.eql(pm.environment.get('existingUserEmail'));",
+                  "  pm.expect(json.user.emailVerified).to.eql(true);",
+                  "  pm.expect(json.token).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Session",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/auth/get-session",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "get-session"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('get session returns 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test('get session returns active session', function () {",
+                  "  pm.expect(json.session).to.exist;",
+                  "  pm.expect(json.user.email).to.eql(pm.environment.get('existingUserEmail'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sign Out",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/sign-out",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "sign-out"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('sign out returns 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test('sign out returns success', function () { pm.expect(json.success).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Session After Sign Out",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/auth/get-session",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "get-session"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('session is cleared after sign out', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.text()).to.eql('null');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Automated Sign Up Verify Reset Flow",
+      "item": [
+        {
+          "name": "Sign Up Fresh User",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var timestamp = Date.now();",
+                  "pm.environment.set('tempUserEmail', 'tourai+' + timestamp + '@example.com');",
+                  "pm.environment.set('tempUserPassword', 'StrongPass123!');",
+                  "pm.environment.set('tempUserResetPassword', 'NewStrongPass123!');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('sign up returns 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test('sign up returns fresh user', function () {",
+                  "  pm.expect(json.user.email).to.eql(pm.environment.get('tempUserEmail'));",
+                  "  pm.expect(json.user.emailVerified).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{signUpName}}\",\n  \"email\": \"{{tempUserEmail}}\",\n  \"password\": \"{{tempUserPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/sign-up/email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "sign-up",
+                "email"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Dev Auth Debug",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/dev/auth/debug/{{tempUserEmail}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dev",
+                "auth",
+                "debug",
+                "{{tempUserEmail}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('debug endpoint returns 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.environment.set('verificationToken', json.generatedVerification.token);",
+                  "pm.test('debug endpoint returns verification token', function () {",
+                  "  pm.expect(json.generatedVerification).to.exist;",
+                  "  pm.expect(json.generatedVerification.token).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify Email",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-email?token={{verificationToken}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify-email"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{verificationToken}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('verify email returns 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test('verify email returns success', function () { pm.expect(json.status).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sign In Verified User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{tempUserEmail}}\",\n  \"password\": \"{{tempUserPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/sign-in/email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "sign-in",
+                "email"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('verified user can sign in', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.expect(json.user.emailVerified).to.eql(true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sign Out Verified User Before Reset",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/sign-out",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "sign-out"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('verified user sign out returns 200', function () { pm.response.to.have.status(200); });",
+                  "pm.expect(pm.response.json().success).to.eql(true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Request Password Reset For Fresh User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{tempUserEmail}}\",\n  \"redirectTo\": \"{{passwordResetRedirect}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/request-password-reset",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "request-password-reset"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('password reset request returns 200', function () { pm.response.to.have.status(200); });",
+                  "pm.expect(pm.response.json().status).to.eql(true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Dev Auth Debug After Reset Request",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/dev/auth/debug/{{tempUserEmail}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dev",
+                "auth",
+                "debug",
+                "{{tempUserEmail}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('debug endpoint returns reset token', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.environment.set('resetToken', json.latestReset.token);",
+                  "pm.expect(json.latestReset.token).to.be.a('string');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"newPassword\": \"{{tempUserResetPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "reset-password"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('reset password returns 200', function () { pm.response.to.have.status(200); });",
+                  "pm.expect(pm.response.json().status).to.eql(true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sign In With Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{tempUserEmail}}\",\n  \"password\": \"{{tempUserResetPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/sign-in/email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "sign-in",
+                "email"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('updated password works', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.expect(json.user.email).to.eql(pm.environment.get('tempUserEmail'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Places and Location",
+      "item": [
+        {
+          "name": "List Places",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/places",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "places"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('places list returns 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.expect(json.items.length).to.be.above(0);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Place By Slug",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/places/{{featuredPlaceSlug}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "places",
+                "{{featuredPlaceSlug}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('place lookup returns 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.expect(json.slug).to.eql(pm.environment.get('featuredPlaceSlug'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resolve Location Near Planetario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lat\": -34.5690419,\n  \"lng\": -58.4116578,\n  \"language\": \"es-AR\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/location/resolve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "location",
+                "resolve"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('location resolve returns 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.expect(json.place.slug).to.eql('planetario-galileo-galilei');",
+                  "pm.expect(json.distanceMeters).to.eql(0);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Featured Places",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/places?featured=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "places"
+              ],
+              "query": [
+                {
+                  "key": "featured",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('featured places returns 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.expect(json.items.every(function (item) { return item.featured === true; })).to.eql(true);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Guides and Audio",
+      "item": [
+        {
+          "name": "Create Guide",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"placeId\": \"{{guidePlaceSlug}}\",\n  \"language\": \"es-AR\",\n  \"duration\": \"short\",\n  \"detailLevel\": \"basic\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/guides",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "guides"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('guide creation returns 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.environment.set('generatedGuideId', json.guide.id);",
+                  "pm.test('guide creation returns ready guide', function () {",
+                  "  pm.expect(json.guide.status).to.eql('ready');",
+                  "  pm.expect(json.guide.audio).to.exist;",
+                  "  pm.expect(json.guide.audio.signedUrl).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Guide",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/guides/{{generatedGuideId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "guides",
+                "{{generatedGuideId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('get guide returns 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.expect(json.id).to.eql(pm.environment.get('generatedGuideId'));",
+                  "pm.expect(json.audio.signedUrl).to.be.a('string');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Guide Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/guides/{{generatedGuideId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "guides",
+                "{{generatedGuideId}}",
+                "status"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('guide status returns 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.expect(json.status).to.eql('ready');",
+                  "pm.expect(json.audioStatus).to.eql('ready');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": []
+}
