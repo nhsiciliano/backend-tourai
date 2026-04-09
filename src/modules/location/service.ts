@@ -1,4 +1,4 @@
-import type { Place } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
 
 type ResolveInput = {
@@ -6,88 +6,94 @@ type ResolveInput = {
   lng: number
 }
 
-function toRadians(value: number) {
-  return (value * Math.PI) / 180
-}
-
-function distanceInMeters(from: ResolveInput, to: ResolveInput) {
-  const earthRadius = 6371000
-  const dLat = toRadians(to.lat - from.lat)
-  const dLng = toRadians(to.lng - from.lng)
-  const lat1 = toRadians(from.lat)
-  const lat2 = toRadians(to.lat)
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2)
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-
-  return earthRadius * c
-}
-
-function scoreCandidate(place: Place, distanceMeters: number) {
-  const featuredBoost = place.isFeatured ? 35 : 0
-  const editorialBoost = Math.min(place.editorialScore, 100) * 0.35
-  const distancePenalty = Math.min(distanceMeters, 1500) / 12
-
-  return featuredBoost + editorialBoost - distancePenalty
+type LocationCandidateRow = {
+  id: string
+  slug: string
+  nameEs: string
+  nameEn: string
+  featured: boolean
+  editorialScore: number
+  distanceMeters: number
+  score: number
 }
 
 function confidenceFromDistance(distanceMeters: number) {
-  if (distanceMeters <= 30) return 0.98
-  if (distanceMeters <= 75) return 0.92
-  if (distanceMeters <= 150) return 0.84
-  if (distanceMeters <= 300) return 0.72
-  if (distanceMeters <= 600) return 0.58
-  return 0.42
+  if (distanceMeters <= 20) return 0.99
+  if (distanceMeters <= 50) return 0.95
+  if (distanceMeters <= 100) return 0.88
+  if (distanceMeters <= 250) return 0.78
+  if (distanceMeters <= 500) return 0.64
+  return 0.48
+}
+
+function resolveMatchType(candidate: LocationCandidateRow) {
+  if (candidate.distanceMeters <= 30) {
+    return 'immediate_proximity'
+  }
+
+  if (candidate.featured || candidate.distanceMeters <= 150) {
+    return 'nearest_featured_or_curated'
+  }
+
+  return 'nearest_candidate'
 }
 
 export async function resolvePlaceByLocation(app: FastifyInstance, input: ResolveInput) {
-  const places = await app.prisma.place.findMany({
-    orderBy: [{ isFeatured: 'desc' }, { editorialScore: 'desc' }],
-  })
+  const userLng = Number(input.lng)
+  const userLat = Number(input.lat)
 
-  if (places.length === 0) {
-    return null
-  }
-
-  const candidates = places
-    .map((place) => {
-      const distanceMeters = distanceInMeters(input, {
-        lat: Number(place.latitude),
-        lng: Number(place.longitude),
-      })
-
-      return {
-        place,
-        distanceMeters,
-        score: scoreCandidate(place, distanceMeters),
-      }
-    })
-    .sort((left, right) => right.score - left.score)
+  const candidates = await app.prisma.$queryRaw<LocationCandidateRow[]>(Prisma.sql`
+    with user_point as (
+      select st_setsrid(st_makepoint(${userLng}, ${userLat}), 4326)::geography as geog
+    )
+    select
+      p.id,
+      p.slug,
+      p."nameEs",
+      p."nameEn",
+      p."isFeatured" as featured,
+      p."editorialScore" as "editorialScore",
+      st_distance(
+        st_setsrid(st_makepoint(p.longitude::double precision, p.latitude::double precision), 4326)::geography,
+        user_point.geog
+      )::double precision as "distanceMeters",
+      (
+        case when p."isFeatured" then 35 else 0 end
+        + least(p."editorialScore", 100) * 0.35
+        - least(
+          st_distance(
+            st_setsrid(st_makepoint(p.longitude::double precision, p.latitude::double precision), 4326)::geography,
+            user_point.geog
+          )::double precision,
+          1500
+        ) / 12
+      )::double precision as score
+    from public.places p
+    cross join user_point
+    order by score desc, "distanceMeters" asc
+    limit 3
+  `)
 
   const best = candidates[0]
 
   if (!best) {
     return null
   }
-  const nearby = candidates.slice(0, 3).map((candidate) => ({
-    id: candidate.place.id,
-    slug: candidate.place.slug,
-    nameEs: candidate.place.nameEs,
-    nameEn: candidate.place.nameEn,
-    distanceMeters: Math.round(candidate.distanceMeters),
-    score: Number(candidate.score.toFixed(2)),
-    featured: candidate.place.isFeatured,
-  }))
 
   return {
-    placeId: best.place.id,
-    placeSlug: best.place.slug,
-    matchType: best.distanceMeters <= 75 ? 'nearest_featured_or_curated' : 'nearest_candidate',
+    placeId: best.id,
+    placeSlug: best.slug,
+    matchType: resolveMatchType(best),
     confidenceScore: Number(confidenceFromDistance(best.distanceMeters).toFixed(2)),
     distanceMeters: Math.round(best.distanceMeters),
-    nearby,
+    nearby: candidates.map((candidate) => ({
+      id: candidate.id,
+      slug: candidate.slug,
+      nameEs: candidate.nameEs,
+      nameEn: candidate.nameEn,
+      distanceMeters: Math.round(candidate.distanceMeters),
+      score: Number(candidate.score.toFixed(2)),
+      featured: candidate.featured,
+    })),
   }
 }

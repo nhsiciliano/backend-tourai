@@ -70,6 +70,12 @@ const guidesRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
         response: {
           200: Type.Object({
             cached: Type.Boolean(),
+            enqueued: Type.Boolean(),
+            guide: guideResponseSchema,
+          }),
+          202: Type.Object({
+            cached: Type.Boolean(),
+            enqueued: Type.Boolean(),
             guide: guideResponseSchema,
           }),
           404: Type.Object({
@@ -84,6 +90,10 @@ const guidesRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
       if ('error' in result) {
         reply.code(404)
         return { message: 'Place not found.' }
+      }
+
+      if (result.enqueued && !result.cached) {
+        reply.code(202)
       }
 
       return result

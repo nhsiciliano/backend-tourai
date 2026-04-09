@@ -42,6 +42,7 @@ async function resolveVoiceId(language: 'es-AR' | 'en') {
 }
 
 export async function synthesizeSpeechWithElevenLabs(input: { text: string; language: 'es-AR' | 'en' }) {
+  const startedAt = Date.now()
   const voiceId = await resolveVoiceId(input.language)
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: 'POST',
@@ -66,5 +67,6 @@ export async function synthesizeSpeechWithElevenLabs(input: { text: string; lang
   return {
     voiceId,
     audioBuffer: Buffer.from(arrayBuffer),
+    latencyMs: Date.now() - startedAt,
   }
 }

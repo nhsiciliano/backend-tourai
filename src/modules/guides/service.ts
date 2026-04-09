@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { ProcessingStatus } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
+import { createGuideJobOptions, type GuideGenerationJobData } from '../../lib/queue.js'
 import { getPlaceById } from '../places/service.js'
 import { fromGuideDetailLevel, fromGuideDuration, fromGuideLanguage, fromProcessingStatus, toGuideDetailLevel, toGuideDuration, toGuideLanguage } from './mappers.js'
 import { buildFallbackGuideScript, buildGuidePrompt } from './prompt.js'
@@ -10,6 +11,17 @@ import { createGuideAudioSignedUrl, uploadGuideAudio } from './storage.js'
 import type { GuideRequestInput } from './types.js'
 
 const PROMPT_VERSION = 'v1'
+
+type GuideQueueResult = {
+  guide: Awaited<ReturnType<typeof requireGuideResponse>>
+  cached: boolean
+  created: boolean
+  enqueued: boolean
+}
+
+type GuideQueueError = {
+  error: 'PLACE_NOT_FOUND'
+}
 
 function buildInputHash(input: GuideRequestInput) {
   return createHash('sha256').update(JSON.stringify({ ...input, promptVersion: PROMPT_VERSION })).digest('hex')
@@ -70,7 +82,7 @@ async function requireGuideResponse(app: FastifyInstance, guideId: string) {
   return guide
 }
 
-export async function createGuide(app: FastifyInstance, input: GuideRequestInput) {
+async function ensureGuideRecord(app: FastifyInstance, input: GuideRequestInput) {
   const place = await app.prisma.place.findFirst({
     where: {
       OR: [{ id: input.placeId }, { slug: input.placeId }],
@@ -81,24 +93,29 @@ export async function createGuide(app: FastifyInstance, input: GuideRequestInput
     return { error: 'PLACE_NOT_FOUND' as const }
   }
 
-  const inputHash = buildInputHash({ ...input, placeId: place.id })
+  const normalizedInput = { ...input, placeId: place.id }
+  const inputHash = buildInputHash(normalizedInput)
   const existing = await app.prisma.generatedGuide.findUnique({ where: { inputHash } })
 
   if (existing && existing.status !== ProcessingStatus.FAILED) {
     return {
       guide: await requireGuideResponse(app, existing.id),
-      cached: true,
+      cached: existing.status === ProcessingStatus.READY,
+      created: false,
     }
   }
 
-  const createdGuide = existing
+  const guide = existing
     ? await app.prisma.generatedGuide.update({
         where: { id: existing.id },
         data: {
           script: null,
           provider: null,
           estimatedDurationSec: null,
-          status: ProcessingStatus.PROCESSING,
+          status: ProcessingStatus.PENDING,
+          lastError: null,
+          generationStartedAt: null,
+          generationCompletedAt: null,
         },
       })
     : await app.prisma.generatedGuide.create({
@@ -109,24 +126,104 @@ export async function createGuide(app: FastifyInstance, input: GuideRequestInput
           detailLevel: toGuideDetailLevel(input.detailLevel),
           inputHash,
           promptVersion: PROMPT_VERSION,
-          status: ProcessingStatus.PROCESSING,
+          status: ProcessingStatus.PENDING,
         },
       })
+
+  return {
+    guide: await requireGuideResponse(app, guide.id),
+    cached: false,
+    created: true,
+  }
+}
+
+export async function enqueueGuideGeneration(app: FastifyInstance, input: GuideRequestInput): Promise<GuideQueueResult | GuideQueueError> {
+  const prepared = await ensureGuideRecord(app, input)
+
+  if ('error' in prepared) {
+    return { error: 'PLACE_NOT_FOUND' }
+  }
+
+  if (prepared.cached && prepared.guide.status === 'ready') {
+    return {
+      ...prepared,
+      enqueued: false,
+    } satisfies GuideQueueResult
+  }
+
+  await app.guideGenerationQueue.add(
+    'generate-guide',
+    { guideId: prepared.guide.id },
+    createGuideJobOptions(prepared.guide.id),
+  )
+
+  return {
+    ...prepared,
+    enqueued: true,
+  } satisfies GuideQueueResult
+}
+
+export async function processGuideGeneration(app: FastifyInstance, guideId: string) {
+  const guide = await app.prisma.generatedGuide.findUnique({
+    where: { id: guideId },
+    include: {
+      place: true,
+      audioAssets: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+    },
+  })
+
+  if (!guide) {
+    throw new Error(`Guide ${guideId} not found for processing.`)
+  }
+
+  if (guide.status === ProcessingStatus.READY) {
+    return requireGuideResponse(app, guide.id)
+  }
+
+  const place = guide.place
+  const input: GuideRequestInput = {
+    placeId: place.id,
+    language: fromGuideLanguage(guide.language),
+    duration: fromGuideDuration(guide.duration),
+    detailLevel: fromGuideDetailLevel(guide.detailLevel),
+  }
+
+  await app.prisma.generatedGuide.update({
+    where: { id: guide.id },
+    data: {
+      status: ProcessingStatus.PROCESSING,
+      generationAttempts: {
+        increment: 1,
+      },
+      generationStartedAt: new Date(),
+      generationCompletedAt: null,
+      lastError: null,
+    },
+  })
 
   try {
     const prompt = buildGuidePrompt(place, input)
     let script: string
     let provider = 'gemini'
+    let llmLatencyMs: number | null = null
+    let fallbackUsed = false
 
     try {
-      script = await generateGuideWithGemini({ prompt })
+      const llmResult = await generateGuideWithGemini({ prompt })
+      script = llmResult.text
+      llmLatencyMs = llmResult.latencyMs
     } catch (error) {
       app.log.warn({ err: error, placeId: place.id }, 'Gemini generation failed, using fallback guide script')
       script = buildFallbackGuideScript(place, input)
       provider = 'template-fallback'
+      fallbackUsed = true
     }
 
-    const estimatedDurationSec = Math.max(30, Math.round(script.split(/\s+/).length / 2.4))
+    const scriptWordCount = script.split(/\s+/).filter(Boolean).length
+    const estimatedDurationSec = Math.max(30, Math.round(scriptWordCount / 2.4))
 
     const speech = await synthesizeSpeechWithElevenLabs({
       text: script,
@@ -134,45 +231,95 @@ export async function createGuide(app: FastifyInstance, input: GuideRequestInput
     })
 
     const upload = await uploadGuideAudio({
-      guideId: createdGuide.id,
+      guideId: guide.id,
       audioBuffer: speech.audioBuffer,
     })
 
+    const latestAudio = guide.audioAssets[0]
+
     await app.prisma.generatedGuide.update({
-      where: { id: createdGuide.id },
+      where: { id: guide.id },
       data: {
         script,
         provider,
+        ttsProvider: 'elevenlabs',
         estimatedDurationSec,
         status: ProcessingStatus.READY,
+        generationCompletedAt: new Date(),
+        lastError: null,
+        fallbackUsed,
+        llmLatencyMs,
+        ttsLatencyMs: speech.latencyMs,
+        scriptWordCount,
       },
     })
 
-    await app.prisma.audioAsset.create({
-      data: {
-        guideId: createdGuide.id,
-        storageBucket: upload.bucket,
-        storagePath: upload.path,
-        mimeType: 'audio/mpeg',
-        voiceCode: speech.voiceId,
-        status: ProcessingStatus.READY,
-      },
-    })
-
-    return {
-      guide: await requireGuideResponse(app, createdGuide.id),
-      cached: false,
+    if (latestAudio) {
+      await app.prisma.audioAsset.update({
+        where: { id: latestAudio.id },
+        data: {
+          storageBucket: upload.bucket,
+          storagePath: upload.path,
+          mimeType: 'audio/mpeg',
+          voiceCode: speech.voiceId,
+          status: ProcessingStatus.READY,
+          lastError: null,
+          audioBytes: speech.audioBuffer.byteLength,
+        },
+      })
+    } else {
+      await app.prisma.audioAsset.create({
+        data: {
+          guideId: guide.id,
+          storageBucket: upload.bucket,
+          storagePath: upload.path,
+          mimeType: 'audio/mpeg',
+          voiceCode: speech.voiceId,
+          status: ProcessingStatus.READY,
+          lastError: null,
+          audioBytes: speech.audioBuffer.byteLength,
+        },
+      })
     }
+
+    return requireGuideResponse(app, guide.id)
   } catch (error) {
     await app.prisma.generatedGuide.update({
-      where: { id: createdGuide.id },
+      where: { id: guide.id },
       data: {
         status: ProcessingStatus.FAILED,
+        generationCompletedAt: new Date(),
+        lastError: error instanceof Error ? error.message : 'Unknown guide generation error',
       },
     })
+
+    if (guide.audioAssets[0]) {
+      await app.prisma.audioAsset.update({
+        where: { id: guide.audioAssets[0].id },
+        data: {
+          status: ProcessingStatus.FAILED,
+          lastError: error instanceof Error ? error.message : 'Unknown audio generation error',
+        },
+      })
+    }
 
     throw error
   }
+}
+
+export async function waitForGuideJob(app: FastifyInstance, guideId: string, timeoutMs = 180000) {
+  const job = await app.guideGenerationQueue.getJob(guideId)
+
+  if (!job) {
+    return null
+  }
+
+  await job.waitUntilFinished(app.guideGenerationQueueEvents, timeoutMs)
+  return getGuide(app, guideId)
+}
+
+export async function createGuide(app: FastifyInstance, input: GuideRequestInput): Promise<GuideQueueResult | GuideQueueError> {
+  return enqueueGuideGeneration(app, input)
 }
 
 export async function getGuide(app: FastifyInstance, id: string) {

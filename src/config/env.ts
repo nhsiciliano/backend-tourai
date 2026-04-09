@@ -15,6 +15,7 @@ const envSchemaDefinition = Type.Object({
     ],
     { default: 'info' },
   ),
+  ENABLE_DEV_ROUTES: Type.Boolean({ default: true }),
   CORS_ORIGIN: Type.String({ default: 'http://localhost:8081' }),
   TRUSTED_ORIGINS: Type.Optional(Type.String()),
   DATABASE_URL: Type.String(),

@@ -163,10 +163,19 @@ model GeneratedGuide {
   detailLevel          GuideDetailLevel
   script               String?
   provider             String?
+  ttsProvider          String?
   promptVersion        String?
   inputHash            String           @unique
   estimatedDurationSec Int?
   status               ProcessingStatus @default(PENDING)
+  generationAttempts   Int              @default(0)
+  generationStartedAt  DateTime?
+  generationCompletedAt DateTime?
+  lastError            String?
+  fallbackUsed         Boolean          @default(false)
+  llmLatencyMs         Int?
+  ttsLatencyMs         Int?
+  scriptWordCount      Int?
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   place                Place            @relation(fields: [placeId], references: [id], onDelete: Cascade)
@@ -205,6 +214,8 @@ model AudioAsset {
   voiceCode     String?
   durationMs    Int?
   status        ProcessingStatus @default(PENDING)
+  lastError     String?
+  audioBytes    Int?
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
   guide         GeneratedGuide   @relation(fields: [guideId], references: [id], onDelete: Cascade)

@@ -2,7 +2,13 @@ type GenerateGuideInput = {
   prompt: string
 }
 
-export async function generateGuideWithGemini(input: GenerateGuideInput): Promise<string> {
+type GenerateGuideResult = {
+  text: string
+  latencyMs: number
+}
+
+export async function generateGuideWithGemini(input: GenerateGuideInput): Promise<GenerateGuideResult> {
+  const startedAt = Date.now()
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
@@ -38,5 +44,7 @@ export async function generateGuideWithGemini(input: GenerateGuideInput): Promis
     throw new Error('Gemini returned an empty guide script.')
   }
 
-  return text
+  const latencyMs = Date.now() - startedAt
+
+  return { text, latencyMs }
 }
