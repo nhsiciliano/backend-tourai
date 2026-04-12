@@ -40,6 +40,7 @@ Set these on both `tourai-api` and `tourai-worker`:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `REDIS_URL`
 - `GEMINI_API_KEY`
+- `GEMINI_MODEL`
 - `ELEVENLABS_API_KEY`
 - `ELEVENLABS_VOICE_ID_ES`
 - `ELEVENLABS_VOICE_ID_EN`

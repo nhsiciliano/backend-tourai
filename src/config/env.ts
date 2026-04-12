@@ -41,6 +41,7 @@ const envSchemaDefinition = Type.Object({
   SUPABASE_SERVICE_ROLE_KEY: Type.String(),
   REDIS_URL: Type.String(),
   GEMINI_API_KEY: Type.String(),
+  GEMINI_MODEL: Type.String({ default: 'gemini-2.0-flash' }),
   ELEVENLABS_API_KEY: Type.String(),
   ELEVENLABS_VOICE_ID_ES: Type.Optional(Type.String()),
   ELEVENLABS_VOICE_ID_EN: Type.Optional(Type.String()),

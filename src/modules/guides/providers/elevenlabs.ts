@@ -59,7 +59,8 @@ export async function synthesizeSpeechWithElevenLabs(input: { text: string; lang
   })
 
   if (!response.ok) {
-    throw new Error(`ElevenLabs synthesis failed with status ${response.status}`)
+    const errorText = await response.text()
+    throw new Error(`ElevenLabs synthesis failed with status ${response.status}: ${errorText}`)
   }
 
   const arrayBuffer = await response.arrayBuffer()
