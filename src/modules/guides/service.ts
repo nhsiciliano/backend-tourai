@@ -5,8 +5,8 @@ import { createGuideJobOptions, type GuideGenerationJobData } from '../../lib/qu
 import { getPlaceById } from '../places/service.js'
 import { fromGuideDetailLevel, fromGuideDuration, fromGuideLanguage, fromProcessingStatus, toGuideDetailLevel, toGuideDuration, toGuideLanguage } from './mappers.js'
 import { buildFallbackGuideScript, buildGuidePrompt } from './prompt.js'
-import { synthesizeSpeechWithElevenLabs } from './providers/elevenlabs.js'
 import { generateGuideWithGemini } from './providers/gemini.js'
+import { synthesizeSpeech } from './providers/tts.js'
 import { createGuideAudioSignedUrl, uploadGuideAudio } from './storage.js'
 import type { GuideRequestInput } from './types.js'
 
@@ -225,7 +225,7 @@ export async function processGuideGeneration(app: FastifyInstance, guideId: stri
     const scriptWordCount = script.split(/\s+/).filter(Boolean).length
     const estimatedDurationSec = Math.max(30, Math.round(scriptWordCount / 2.4))
 
-    const speech = await synthesizeSpeechWithElevenLabs({
+    const speech = await synthesizeSpeech({
       text: script,
       language: input.language,
     })
@@ -242,7 +242,7 @@ export async function processGuideGeneration(app: FastifyInstance, guideId: stri
       data: {
         script,
         provider,
-        ttsProvider: 'elevenlabs',
+        ttsProvider: speech.provider,
         estimatedDurationSec,
         status: ProcessingStatus.READY,
         generationCompletedAt: new Date(),
